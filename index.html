@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Générateur de CGV - Winstore</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .column {
+            flex: 1;
+        }
+        textarea {
+            width: 38ch;
+            height: 450px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            resize: none;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            border: 1px solid #ccc;
+            min-height: 450px;
+        }
+        .over-limit {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Générateur de CGV - Winstore</h2>
+
+    <h3>Configuration</h3>
+    <label for="startLine">Numéro de la première ligne :</label>
+    <input type="number" id="startLine" value="18" min="1" max="40">
+
+    <div class="container">
+	    <div class="column">
+            <h3>Texte source</h3>
+            <textarea id="sourceText" placeholder="Collez votre texte ici..."></textarea>
+            <button onclick="justifyText()">Justifier</button>
+        </div>
+        <div class="column">
+            <h3>Texte Justifié (Éditable)</h3>
+            <textarea id="justifiedText"></textarea>
+            <button onclick="convertToDatabaseFormat()">Générer BDD</button>
+        </div>
+        <div class="column">
+            <h3>Formaté pour BDD</h3>
+            <pre id="outputTextRight"></pre>
+            <button onclick="downloadBDDFile()">Télécharger BDD</button>
+        </div>
+    </div>
+
+    <script>
+        function splitIntoLines(text, maxLength) {
+            let words = text.split(/\s+/);
+            let lines = [];
+            let currentLine = "";
+
+            for (let word of words) {
+                if ((currentLine + " " + word).trim().length > maxLength) {
+                    lines.push(justifyLine(currentLine.trim(), maxLength));
+                    currentLine = word;
+                } else {
+                    currentLine += (currentLine ? " " : "") + word;
+                }
+            }
+            if (currentLine) lines.push(justifyLine(currentLine.trim(), maxLength));
+
+            return lines.join("\n");
+        }
+
+        function justifyLine(line, maxLength) {
+            let words = line.split(/\s+/);
+            if (words.length === 1) return line.padEnd(maxLength, " ");
+
+            let totalSpaces = maxLength - line.replace(/\s+/g, "").length;
+            let gaps = words.length - 1;
+
+            if (gaps === 0) return line.padEnd(maxLength, " ");
+
+            let spaces = new Array(gaps).fill(Math.floor(totalSpaces / gaps));
+
+            for (let i = 0; i < totalSpaces % gaps; i++) {
+                spaces[i] += 1;
+            }
+
+            let justifiedLine = words[0];
+            for (let i = 0; i < gaps; i++) {
+                justifiedLine += " ".repeat(spaces[i]) + words[i + 1];
+            }
+
+            return justifiedLine;
+        }
+
+        function justifyText() {
+            let sourceText = document.getElementById("sourceText").value.trim();
+            let maxLength = 38;
+            let justifiedText = splitIntoLines(sourceText, maxLength);
+            document.getElementById("justifiedText").value = justifiedText;
+        }
+
+        function convertToDatabaseFormat() {
+            let lines = document.getElementById("justifiedText").value.split("\n");
+            let startLine = parseInt(document.getElementById("startLine").value, 10) || 18;
+
+            let formattedLines = lines.map((line, index) => {
+                let currentLineNumber = startLine + index;
+                let libelle = line.substring(0, 25).padEnd(25, " ");
+                let libelle2 = line.length <= 25 ? "\\0" : line.substring(25, 38).trim().padEnd(13, " ") + "\\0";
+
+                let lineClass = currentLineNumber > 40 ? 'class="over-limit"' : '';
+                return `<span ${lineClass}>13|${currentLineNumber}|${libelle}|${libelle2}|0.2|</span>`;
+            });
+
+            let bddHeader = `TYPEDIVERS|${lines.length}|13\n`;
+            let bddFields = `5|IDType|NumType|Libelle|Libelle2|Valeur\n`;
+            let bddData = lines.map((line, index) => {
+                let currentLineNumber = startLine + index;
+                return `13|${currentLineNumber}|${line.substring(0, 25).padEnd(25, " ")}|${line.length <= 25 ? "\\0" : line.substring(25, 38).trim().padEnd(13, " ") + "\\0"}|0.2|`;
+            }).join("\n");
+
+            document.getElementById("outputTextRight").innerHTML = formattedLines.join("<br>");
+            document.getElementById("outputTextRight").dataset.bddContent = bddHeader + bddFields + bddData + "\n·\n";
+        }
+
+        function downloadBDDFile() {
+            let bddContent = document.getElementById("outputTextRight").dataset.bddContent;
+            let blob = new Blob([bddContent], { type: "text/plain;charset=windows-1252" });
+            let a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "TD13.bdd";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+
+</body>
+</html>
